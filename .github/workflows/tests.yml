@@ -8,49 +8,59 @@ on:
     types: [opened, synchronize, reopened]
 jobs:
   test:
-    name: Test Terraform
+    name: Build Tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: ./tf
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Set up Go
+        uses: actions/setup-go@v4
         with:
-          terraform_version: "${{vars.TERRAFORM_VERSION}}"
+          go-version: ${{ vars.GO_VERSION }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v3
+      - name: Run Unit Tests and Generate Coverage Report
+        run: go test -race -count=1 -coverprofile=./cov.out ./internal/...
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
         with:
-          aws-region: us-east-1
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          name: coverage
+          path: cov.out
+          retention-days: 1
 
-      - name: Terraform Init
-        id: init
-        run: terraform init -backend-config="bucket=${{ vars.AWS_BUCKET_TERRAFORM }}"
+      - name: Run GoSec Security Scanner and Generate Report
+        uses: securego/gosec@master
+        with:
+          args: '-no-fail -fmt sonarqube -out gosec-report.json ./...'
 
-      - name: Terraform Validate
-        id: validate
-        run: terraform validate
+      - name: Upload GoSec Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sec
+          path: gosec-report.json
+          retention-days: 1
 
-      - name: Terraform Plan
-        id: plan
+  analysis:
+    needs: 
+      - test
+    name: SonarQube 
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download Coverage Report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: .
+
+      - name: Download GoSec Report
+        uses: actions/download-artifact@v4
+        with:
+          name: sec
+          path: .
+
+      - name: SonarCloud Analysis
+        uses: SonarSource/sonarcloud-github-action@v5
         env:
-          TF_VAR_bucket_name: ${{ vars.AWS_BUCKET_TERRAFORM }}
-        run: terraform plan -input=false
-        continue-on-error: true
-
-      - name: Terraform Plan Status
-        if: steps.plan.outcome == 'failure'
-        run: exit 1
-      
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
-        env: 
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
