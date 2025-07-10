@@ -1,0 +1,76 @@
+name: DestroyLambda
+
+on:
+  workflow_dispatch:
+  
+jobs:
+  build:
+    name: Build and Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ vars.GO_VERSION }}
+
+      - name: Pre Build
+        run: go mod download
+
+      - name: Build
+        run: env GOOS=linux GOARCH=arm64 go build -o bootstrap cmd/main.go
+
+      - name: Package
+        run: zip lambda.zip bootstrap
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda
+          path: lambda.zip
+          retention-days: 1    
+
+  deploy:
+    name: Destroy Lambda Infrastructure
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./tf
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Download lambda.zip
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda
+          path: ./tf
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "${{vars.TERRAFORM_VERSION}}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-region: us-east-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -backend-config="bucket=${{ vars.AWS_BUCKET_TERRAFORM }}"
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan 
+        continue-on-error: true
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
