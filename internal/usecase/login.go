@@ -31,10 +31,10 @@ func NewUseCaseLogin() *UscLogin {
 }
 
 var (
-	userPoolID   = "us-east-1_2bFmtgmhq"        // User Pool ID
-	clientID     = "5nfq7bj3levns4k24kuc3v5oee" // App Client ID
+	userPoolID   = "us-east-1_tRk65cj3j"        // User Pool ID
+	clientID     = "15v4gl95tci1ajqj7sro466im3" // App Client ID
 	region       = "us-east-1"
-	clientSecret = "1k4f1v8stkta0iefmf2mu9ors6ql47imqprlhffuikbf2iim2up"
+	clientSecret = "154iful2mel5oljgmshpsh1aeoihr1jubiikvjqo8hlstp2n80sb"
 )
 
 func generateSecretHash(clientID, clientSecret, username string) string {
